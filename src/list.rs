@@ -80,6 +80,19 @@ where
         self.selected.is_none()
     }
 
+    /// select the bottom-most item
+    pub fn select_bottom(&mut self) {
+        if !self.below.is_empty() {
+            if let Some(selected) = self.selected.take() {
+                self.above.push_back(selected);
+                self.above.extend(self.below.drain(0..));
+                self.selected = self.above.pop_back();
+            } else {
+                unreachable!("the invariant has been violated")
+            }
+        }
+    }
+
     pub fn up(&mut self) {
         if let Some(item_above) = self.above.pop_back() {
             if let Some(selected) = self.selected.take() {
