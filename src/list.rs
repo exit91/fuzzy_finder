@@ -119,29 +119,25 @@ where
 
         // we take the highest scoring items, and reverse their order so that
         // the scores increase going from the top to the bottom of the list
-        let iter = matches.iter().take(self.capacity as usize).rev().cloned();
+        let iter = matches.iter().take(self.capacity as usize).cloned();
 
         if is_empty {
             self.below.extend(iter);
-            self.select_if_any();
         } else {
-            self.below.extend(iter.clone().take(below_len));
+            self.below.extend(iter.clone().take(below_len).rev());
             self.selected = iter.clone().nth(below_len);
-            self.above.extend(iter.skip(below_len + 1));
+            self.above.extend(iter.skip(below_len + 1).rev());
+        }
+
+        // ensure invariant
+        if self.selected.is_none() {
+            // we select the top-most item by default
+            self.selected = self.below.pop_front();
         }
     }
 
     pub fn get_selected(&self) -> &Item<T> {
         self.selected.as_ref().unwrap()
-    }
-
-    /// ensures the invariant
-    fn select_if_any(&mut self) {
-        if self.selected.is_none() {
-            // we select the lowest
-            self.above.extend(self.below.drain(0..));
-            self.selected = self.above.pop_back();
-        }
     }
 }
 
