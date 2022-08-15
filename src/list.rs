@@ -85,6 +85,8 @@ where
             if let Some(selected) = self.selected.take() {
                 self.below.push_front(selected);
                 self.selected = Some(item_above);
+            } else {
+                unreachable!("the invariant has been violated")
             }
         }
     }
