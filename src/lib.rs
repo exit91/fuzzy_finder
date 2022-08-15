@@ -28,7 +28,7 @@ where
     console_offset: u16,
     stdout: RawTerminal<Stdout>,
     first: bool,
-    list: List<T>,
+    list: List<Item<T>>,
     positive_space_remaining: u16,
 }
 

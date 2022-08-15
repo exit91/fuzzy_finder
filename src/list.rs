@@ -1,5 +1,4 @@
 /// The list and events for handling movement within the list. No UI.
-use super::item::Item;
 use std::collections::VecDeque;
 
 /// # List
@@ -24,9 +23,9 @@ where
     T: Clone,
 {
     capacity: usize,
-    above: VecDeque<Item<T>>,
-    selected: Option<Item<T>>,
-    below: VecDeque<Item<T>>,
+    above: VecDeque<T>,
+    selected: Option<T>,
+    below: VecDeque<T>,
 }
 
 impl<T> List<T>
@@ -43,7 +42,7 @@ where
     }
 
     /// Items in order from top to bottom
-    pub fn items<'a>(&'a self) -> Box<dyn Iterator<Item = Item<T>> + 'a> {
+    pub fn items<'a>(&'a self) -> Box<dyn Iterator<Item = T> + 'a> {
         Box::new(
             self.above
                 .iter()
@@ -53,7 +52,7 @@ where
         )
     }
 
-    pub fn tagged_iter<'a>(&'a self) -> Box<dyn Iterator<Item = (bool, Item<T>)> + 'a> {
+    pub fn tagged_iter<'a>(&'a self) -> Box<dyn Iterator<Item = (bool, T)> + 'a> {
         let selected_index = self.len_above();
         Box::new(
             self.items()
@@ -118,7 +117,7 @@ where
     /// Takes the current matches and updates the visible contents.
     ///
     /// The input matches are assumed to be sorted in descending order of score.
-    pub fn update(&mut self, matches: &[Item<T>]) {
+    pub fn update(&mut self, matches: &[T]) {
         log::info!("Updating view with {} match(es)", matches.len());
         let is_empty = self.is_empty();
         let selected_len = self.selected.iter().count();
@@ -149,7 +148,7 @@ where
         }
     }
 
-    pub fn get_selected(&self) -> &Item<T> {
+    pub fn get_selected(&self) -> &T {
         self.selected.as_ref().unwrap()
     }
 }
@@ -158,6 +157,7 @@ where
 mod tests {
 
     use super::*;
+    use super::super::item::Item;
 
     #[derive(Clone)]
     struct TestItem {
@@ -176,12 +176,12 @@ mod tests {
     struct Setup {
         items: Vec<Item<TestItem>>,
         few_items: Vec<Item<TestItem>>,
-        view: List<TestItem>,
+        view: List<Item<TestItem>>,
     }
 
     impl Setup {
         fn new(lines_to_show: i8) -> Self {
-            let view = List::<TestItem>::new(lines_to_show as usize);
+            let view = List::<Item<TestItem>>::new(lines_to_show as usize);
 
             Setup {
                 items: vec![
