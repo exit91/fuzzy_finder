@@ -17,7 +17,7 @@ use std::collections::VecDeque;
 /// - 5
 /// - 6
 ///
-/// We maintain the INVARIANT that `selected` can only be empty if there are no elements in the list.
+/// Maintain the INVARIANT that `selected` can only be empty if there are no elements in the list.
 pub struct List<T>
 where
     T: Clone,
@@ -79,19 +79,6 @@ where
         self.selected.is_none()
     }
 
-    /// select the bottom-most item
-    pub fn select_bottom(&mut self) {
-        if !self.below.is_empty() {
-            if let Some(selected) = self.selected.take() {
-                self.above.push_back(selected);
-                self.above.extend(self.below.drain(0..));
-                self.selected = self.above.pop_back();
-            } else {
-                unreachable!("the invariant has been violated")
-            }
-        }
-    }
-
     pub fn up(&mut self) {
         if let Some(item_above) = self.above.pop_back() {
             if let Some(selected) = self.selected.take() {
@@ -129,13 +116,14 @@ where
         self.below.clear();
         self.selected = None;
 
-        // we take the highest scoring items, and reverse their order so that
-        // the scores increase going from the top to the bottom of the list
+        // take the highest scoring items
         let iter = matches.iter().take(self.capacity as usize).cloned();
 
         if is_empty {
-            self.below.extend(iter);
+            // extend above so the bottom item gets selected if the List was initially empty
+            self.above.extend(iter.rev());
         } else {
+            // otherwise fill up from below
             self.below.extend(iter.clone().take(below_len).rev());
             self.selected = iter.clone().nth(below_len);
             self.above.extend(iter.skip(below_len + 1).rev());
@@ -143,8 +131,8 @@ where
 
         // ensure invariant
         if self.selected.is_none() {
-            // we select the top-most item by default
-            self.selected = self.below.pop_front();
+            // select the top-most item by default
+            self.selected = self.below.pop_front().or_else(|| self.above.pop_back());
         }
     }
 
