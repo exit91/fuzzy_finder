@@ -214,7 +214,6 @@ where
         let mut state = FuzzyFinder::new(items, lines_to_show);
 
         state.update_matches();
-        state.list.select_bottom();
 
         state.render()?;
 
