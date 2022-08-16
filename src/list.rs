@@ -38,7 +38,7 @@ where
 
     /// Items in order from top to bottom
     pub fn tagged_iter<'a>(&'a self) -> Box<dyn Iterator<Item = (bool, T)> + 'a> {
-        let index_from_top = self.len() - self.index;
+        let index_from_top = self.len().saturating_sub(1) - self.index;
         Box::new(
             self.items()
                 .enumerate()
