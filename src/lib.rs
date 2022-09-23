@@ -1,8 +1,7 @@
 use anyhow::Result;
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
-use item::Item;
-use list::List;
+use item::{Item, ScoredItem};
 use pastel_colours::{
     BLUE_FG, DARK_BLUE_BG, DARK_GREY_BG, DARK_GREY_FG, GREEN_FG, RESET_BG, RESET_FG,
 };
@@ -14,9 +13,10 @@ use termion::cursor::Show;
 use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::{IntoRawMode, RawTerminal};
+use view::*;
 
 pub mod item;
-mod list;
+pub mod view;
 
 pub struct FuzzyFinder<T>
 where
@@ -24,11 +24,11 @@ where
 {
     search_term: String,
     all_items: Vec<Item<T>>,
-    matches: Vec<Item<T>>,
+    matches: Vec<ScoredItem<T>>,
     console_offset: u16,
     stdout: RawTerminal<Stdout>,
     first: bool,
-    list: List<Item<T>>,
+    view: ScrollingView,
     positive_space_remaining: u16,
 }
 
@@ -68,19 +68,19 @@ where
             console_offset,
             stdout,
             first: true,
-            list: List::new(lines_to_show as usize),
+            view: ScrollingView::new(lines_to_show as usize),
             positive_space_remaining,
         }
     }
 
     pub fn up(&mut self) -> Result<()> {
-        self.list.up();
+        self.view.up();
         self.update_matches();
         self.render()
     }
 
     pub fn down(&mut self) -> Result<()> {
-        self.list.down();
+        self.view.down();
         self.update_matches();
         self.render()
     }
@@ -97,10 +97,6 @@ where
         if self.search_term.chars().count() > 0 {
             self.search_term =
                 String::from(&self.search_term[..self.search_term.chars().count() - 1]);
-            let matcher = SkimMatcherV2::default();
-            for f in &mut self.all_items {
-                f.score = matcher.fuzzy_indices(&f.name, &self.search_term);
-            }
         }
         self.update_matches();
         self.render()
@@ -111,7 +107,7 @@ where
         // this run of lk.
         write!(self.stdout, "{}", termion::cursor::Save).unwrap();
         if self.first {
-            for _ in 0..self.list.capacity() {
+            for _ in 0..self.view.capacity {
                 writeln!(self.stdout, " ")?;
             }
             self.first = false
@@ -133,15 +129,17 @@ where
     fn render_items(&mut self) -> Result<()> {
         self.goto_start()?;
         // render blank space
-        let num_blank = self.list.capacity() - self.list.len();
+        let list = self.view.render(&self.matches);
+        let num_blank = self.view.capacity - list.len();
         for _ in 0..num_blank {
             writeln!(self.stdout, "{}", termion::clear::CurrentLine)?;
         }
-        for (is_selected, item) in self.list.tagged_iter() {
-            let fuzzy_indecies = &item.score.as_ref().unwrap().1;
+        for (is_selected, scored_item) in list {
+            let fuzzy_indices = &scored_item.fuzzy_indices;
 
             // Do some string manipulation to colourise the indexed parts
-            let coloured_line = get_coloured_line(fuzzy_indecies, &item.name, is_selected);
+            let coloured_line =
+                get_coloured_line(&fuzzy_indices, &scored_item.item.name, is_selected);
 
             writeln!(
                 self.stdout,
@@ -157,7 +155,7 @@ where
 
     fn render_prompt(&mut self) -> Result<()> {
         // Render the prompt
-        let prompt_y = self.list.capacity() as u16 + 1;
+        let prompt_y = self.view.capacity as u16 + 1;
         let current_x = self.search_term.chars().count() + 2;
 
         // Go to the bottom line, where we'll render the prompt
@@ -178,27 +176,21 @@ where
 
     /// Gets functions that match our current criteria, sorted by score.
     pub fn update_matches(&mut self) {
+        self.matches.clear();
         let matcher = SkimMatcherV2::default();
-        for f in &mut self.all_items {
-            f.score = matcher.fuzzy_indices(&f.name, &self.search_term);
-        }
-        let mut matches = self
-            .all_items
-            .iter()
-            .filter(|f| f.score.is_some())
-            .cloned()
-            .collect::<Vec<Item<T>>>();
+        self.matches.extend(self.all_items.iter().flat_map(|f| {
+            let (score, positions) = matcher.fuzzy_indices(&f.name, &self.search_term)?;
+            Some(f.clone().with_score(score, positions))
+        }));
 
         log::info!(
             "There are a total of {} item(s) and {} match(es)",
             self.all_items.len(),
-            matches.len()
+            self.matches.len()
         );
 
         // We want these in the order of their fuzzy matched score, i.e. closed matches
-        matches.sort_by(|a, b| b.score.cmp(&a.score));
-        self.matches = matches;
-        self.list.update(&self.matches);
+        self.matches.sort_by(|a, b| b.score.cmp(&a.score));
     }
 
     /// Renders the current result set
@@ -251,13 +243,15 @@ where
                         return if !state.matches.is_empty() {
                             // Tidy up the console lines we've been writing
                             for _ in state.console_offset
-                                ..state.console_offset + state.list.capacity() as u16 + 4
+                                ..state.console_offset + state.view.capacity as u16 + 4
                             {
                                 write!(state.stdout, "{}", termion::clear::CurrentLine,)?;
                             }
-                            Ok(Some(
-                                state.list.get_selected().item.as_ref().unwrap().to_owned(),
-                            ))
+                            Ok(state
+                                .view
+                                .render(&state.matches)
+                                .selected()
+                                .map(|f| f.item.data.to_owned()))
                         } else {
                             Ok(None)
                         };
@@ -338,13 +332,4 @@ fn get_coloured_line(fuzzy_indecies: &[usize], text: &str, is_selected: bool) ->
         coloured_line = format!("{DARK_GREY_BG} {RESET_BG}  {coloured_line}{remaining_chars}");
     }
     coloured_line
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        let result = 2 + 2;
-        assert_eq!(result, 4);
-    }
 }
